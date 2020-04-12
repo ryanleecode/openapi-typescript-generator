@@ -11,6 +11,7 @@
     "@apidevtools/swagger-parser": "^9.0.1",
     "@oclif/command": "^1.5.19",
     "@oclif/config": "^1.14.0",
+    "@oclif/plugin-autocomplete": "^0.1.5",
     "@oclif/plugin-help": "^2.2.3",
     "tslib": "^1.11.1"
   },
@@ -50,7 +51,8 @@
     "commands": "./lib/commands",
     "bin": "openapi-typescript-generator",
     "plugins": [
-      "@oclif/plugin-help"
+      "@oclif/plugin-help",
+      "@oclif/plugin-autocomplete"
     ]
   },
   "repository": "drdgvhbh/openapi-typescript-generator",
