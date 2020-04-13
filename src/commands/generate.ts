@@ -6,8 +6,9 @@ import * as TE from 'fp-ts/lib/TaskEither'
 import * as E from 'fp-ts/lib/Either'
 import { pipe } from 'fp-ts/lib/pipeable'
 import * as O from 'fp-ts/lib/Option'
-import { Project } from 'ts-morph'
+import { Project, ClassDeclaration, VariableDeclarationKind } from 'ts-morph'
 import path from 'path'
+import { write } from 'fs'
 
 export default class Generate extends Command {
   static description = 'generate code from openapi 3.0 specification'
@@ -30,7 +31,10 @@ export default class Generate extends Command {
 
     return pipe(
       TE.tryCatch(
-        () => SwaggerParser.validate(flags.input),
+        () => {
+          SwaggerParser.validate(flags.input)
+          return SwaggerParser.bundle(flags.input)
+        },
         (err) => this.error((err as Error).message, { exit: 1 }),
       ),
       TE.map(
@@ -52,38 +56,154 @@ export default class Generate extends Command {
             undefined,
             { overwrite: true },
           )
-          /*           sourceFile.addImportDeclaration({
-            namespaceImport: 't',
-            moduleSpecifier: 'io-ts',
-          }) */
+
+          const doSomethingWithSchema = (
+            schema:
+              | OpenAPIV3.ReferenceObject
+              | OpenAPIV3.ArraySchemaObject
+              | OpenAPIV3.NonArraySchemaObject,
+            schemaName: string,
+            cls?: ClassDeclaration,
+          ) => {
+            const isReferenceObject = (
+              obj: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject,
+            ): obj is OpenAPIV3.ReferenceObject => '$ref' in obj
+
+            const isSchemaObject = (
+              obj: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject,
+            ): obj is OpenAPIV3.SchemaObject => 'type' in obj
+
+            if (isReferenceObject(schema)) {
+              if (cls) {
+                cls.addProperty({
+                  name: schemaName,
+                  type: 'unknown',
+                })
+              }
+            } else if (isSchemaObject(schema)) {
+              switch (schema.type) {
+                case 'array':
+                  break
+                case 'object': {
+                  console.log(schemaName, schema)
+                  const schemaClass = sourceFile.addClass({
+                    name: schemaName,
+                  })
+                  schemaClass.addJsDocs([
+                    {
+                      description: schema.description,
+                    },
+                  ])
+
+                  if (schema.properties) {
+                    for (const property of Object.keys(schema.properties!)) {
+                      doSomethingWithSchema(
+                        schema.properties[property],
+                        property,
+                        schemaClass,
+                      )
+                    }
+                  }
+                  break
+                }
+                case 'string':
+                  if (cls) {
+                    cls.addProperty({
+                      name: schemaName,
+                      type: 'string',
+                    })
+                  } else {
+                    if (!schema.enum) {
+                      sourceFile.addTypeAlias({
+                        name: schemaName,
+                        isExported: true,
+                        type: 'string',
+                      })
+                    } else {
+                      const enumVar = sourceFile.addVariableStatement({
+                        declarationKind: VariableDeclarationKind.Const,
+                        isExported: true,
+                        declarations: [
+                          {
+                            name: schemaName,
+                            initializer: (writer) => {
+                              writer.block(() => {
+                                const enums = schema.enum!
+                                enums.forEach((enumValue) => {
+                                  writer.write(`${enumValue}:`)
+                                  writer.space()
+                                  writer.quote()
+                                  writer.write(enumValue)
+                                  writer.quote()
+                                  writer.space()
+                                  writer.write('as')
+                                  writer.space()
+                                  writer.quote()
+                                  writer.write(enumValue)
+                                  writer.quote()
+                                  writer.write(',')
+                                  writer.newLineIfLastNot()
+                                })
+                              })
+                            },
+                          },
+                        ],
+                      })
+
+                      sourceFile.addTypeAlias({
+                        name: schemaName,
+                        isExported: true,
+                        type: (writer) => {
+                          writer.write('keyof')
+                          writer.space()
+                          writer.write('typeof')
+                          writer.space()
+                          writer.write(schemaName)
+                        },
+                      })
+                    }
+                  }
+                  break
+                case 'boolean':
+                  if (cls) {
+                    cls.addProperty({
+                      name: schemaName,
+                      type: 'boolean',
+                    })
+                  } else {
+                    sourceFile.addTypeAlias({
+                      name: schemaName,
+                      type: 'boolean',
+                      isExported: true,
+                    })
+                  }
+                  break
+                case 'integer':
+                  if (cls) {
+                    cls.addProperty({
+                      name: schemaName,
+                      type: 'number',
+                    })
+                  } else {
+                    sourceFile.addTypeAlias({
+                      name: schemaName,
+                      type: 'number',
+                      isExported: true,
+                    })
+                  }
+                  break
+                default:
+                  break
+              }
+            }
+          }
 
           const schemas = doc.components?.schemas
           if (schemas) {
             for (const schemaName of Object.keys(schemas)) {
               const schema = schemas[schemaName]
-              console.log(schemaName, schema)
 
-              const schemaClass = sourceFile.addClass({
-                name: schemaName,
-              })
-
-              const isReferenceObject = (
-                obj: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject,
-              ): obj is OpenAPIV3.ReferenceObject => '$ref' in obj
-
-              const isSchemaObject = (
-                obj: OpenAPIV3.ReferenceObject | OpenAPIV3.SchemaObject,
-              ): obj is OpenAPIV3.SchemaObject => 'type' in obj
-
-              if (isReferenceObject(schema)) {
-                //
-              } else if (isSchemaObject(schema)) {
-                schemaClass.addJsDocs([
-                  {
-                    description: schema.description,
-                  },
-                ])
-              }
+              doSomethingWithSchema(schema, schemaName)
             }
           }
 
