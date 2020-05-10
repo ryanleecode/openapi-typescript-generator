@@ -8,11 +8,12 @@ import { pipe } from 'fp-ts/lib/pipeable'
 import * as O from 'fp-ts/lib/Option'
 import * as gen from '@drdgvhbh/io-ts-codegen'
 import * as t from 'io-ts'
+import { sequenceT } from 'fp-ts/lib/Apply'
 
 export type SchemaObject =
   | OpenAPIV3.ReferenceObject
-  | OpenAPIV3.ArraySchemaObject
-  | OpenAPIV3.NonArraySchemaObject
+  | OpenAPIV3.SchemaObject
+  | OpenAPIV3.BaseSchemaObject
 
 export const isArraySchemaObject = O.getRefinement<
   SchemaObject,
@@ -65,6 +66,42 @@ export function handleStringProperty(
   )
 }
 
+export function collectObjectProperties(
+  propertyObjects: Array<SchemaObject>,
+): gen.TypeReference[] {
+  return pipe(
+    A.array.map(propertyObjects, (propertyObject) => {
+      if (isReferenceObject(propertyObject)) {
+        const componentName = extractComponentIdentifier(propertyObject.$ref)
+        return O.some(gen.identifier(componentName) as gen.TypeReference)
+      } else if (isArraySchemaObject(propertyObject)) {
+        return O.none
+      } else if (isNonArraySchemaObject(propertyObject)) {
+        switch (propertyObject.type) {
+          case 'object':
+            return O.some(
+              gen.typeCombinator(
+                pipe(propertyObject, collectSchemaProperties),
+              ) as gen.TypeReference,
+            )
+          default:
+            return O.none
+        }
+      } else {
+        return O.none
+      }
+    }),
+    A.filter(O.isSome),
+    (nestedProperties) => nestedProperties.map((v) => v.value),
+  )
+}
+
+export function extractComponentIdentifier($ref: string): string {
+  const tokens = $ref.split('/')
+
+  return tokens[tokens.length - 1]
+}
+
 export function collectProperties(
   properties: Record<string, SchemaObject>,
   requiredProperties: Set<string>,
@@ -85,10 +122,34 @@ export function collectProperties(
   )
 }
 
-export function extractComponentIdentifier($ref: string): string {
-  const tokens = $ref.split('/')
+export function collectSchemaProperties(
+  schema: OpenAPIV3.SchemaObject,
+): gen.Property[] {
+  return pipe(
+    [schema.properties || {}, new Set(schema.required || [])] as const,
+    ([properties, requiredProperties]) =>
+      collectProperties(properties, requiredProperties),
+  )
+}
 
-  return tokens[tokens.length - 1]
+export function handleArraySchemaObject(
+  schema: OpenAPIV3.ArraySchemaObject,
+): gen.ArrayCombinator {
+  const { items } = schema
+  if (isReferenceObject(items)) {
+    const itemComponentName = extractComponentIdentifier(items.$ref)
+
+    return gen.arrayCombinator(gen.identifier(itemComponentName))
+  } else if (isArraySchemaObject(items)) {
+    return gen.arrayCombinator(handleArraySchemaObject(items))
+  } else {
+    return pipe(
+      items,
+      collectSchemaProperties,
+      gen.typeCombinator,
+      gen.arrayCombinator,
+    )
+  }
 }
 
 export function handlePropertyObject(
@@ -103,14 +164,15 @@ export function handlePropertyObject(
       O.some,
     )
   } else if (isArraySchemaObject(schema)) {
-    return O.none
+    return O.some(
+      gen.property(schemaName, handleArraySchemaObject(schema), !isRequired),
+    )
   } else if (isNonArraySchemaObject(schema)) {
     switch (schema.type) {
       case 'object':
         return pipe(
-          [schema.properties || {}, new Set(schema.required || [])] as const,
-          ([properties, requiredProperties]) =>
-            collectProperties(properties, requiredProperties),
+          schema,
+          collectSchemaProperties,
           (properties) =>
             gen.property(
               schemaName,
@@ -128,11 +190,11 @@ export function handlePropertyObject(
       case 'number':
         return O.some(gen.property(schemaName, gen.numberType, !isRequired))
       case 'string':
-        return handleStringProperty(schema, schemaName, !isRequired)
+        return handleStringProperty(schema, schemaName, isRequired)
     }
+  } else {
+    return O.none as never
   }
-
-  return O.none
 }
 
 export function handleObjectSchemaDeclaration(
@@ -142,9 +204,28 @@ export function handleObjectSchemaDeclaration(
   return pipe(
     [schema.properties || {}, new Set(schema.required || [])] as const,
     ([properties, requiredProperties]) =>
-      collectProperties(properties, requiredProperties),
-    (properties) =>
-      gen.typeDeclaration(schemaName, gen.typeCombinator(properties), true),
+      pipe(collectProperties(properties, requiredProperties), (properties) =>
+        gen.typeCombinator(properties),
+      ),
+    (properties) => {
+      if (schema.allOf) {
+        return gen.intersectionCombinator(
+          [...collectObjectProperties(schema.allOf)].concat(
+            schema.properties ? properties : [],
+          ),
+        )
+      } else if (schema.oneOf) {
+        return schema.properties
+          ? gen.intersectionCombinator([
+              properties,
+              gen.unionCombinator(collectObjectProperties(schema.oneOf)),
+            ])
+          : gen.unionCombinator(collectObjectProperties(schema.oneOf))
+      } else {
+        return properties
+      }
+    },
+    (properties) => gen.typeDeclaration(schemaName, properties, true),
     O.some,
   )
 }
@@ -199,9 +280,31 @@ export function handleRootSchema(
       case 'string':
         return handleStringDeclaration(schema, schemaName)
     }
+  } else {
+    if (schema.allOf) {
+      return O.some(
+        gen.typeDeclaration(
+          schemaName,
+          pipe(
+            collectObjectProperties(schema.allOf || []),
+            gen.intersectionCombinator,
+          ),
+        ),
+      )
+    } else if (schema.oneOf) {
+      return O.some(
+        gen.typeDeclaration(
+          schemaName,
+          pipe(
+            collectObjectProperties(schema.oneOf || []),
+            gen.unionCombinator,
+          ),
+        ),
+      )
+    } else {
+      return O.none
+    }
   }
-
-  return O.none as never
 }
 
 export function handleSchemas(
