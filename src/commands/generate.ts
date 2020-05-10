@@ -35,7 +35,7 @@ export default class Generate extends Command {
 
     return pipe(
       TE.tryCatch(
-        () => SwaggerParser.validate(flags.input),
+        () => SwaggerParser.bundle(flags.input),
         (err) => this.error((err as Error).message, { exit: 1 }),
       ),
       TE.map(
@@ -73,7 +73,9 @@ export default class Generate extends Command {
                       ),
                       ...pipe(
                         sortedDeclarations,
-                        A.map((d) => `${gen.printStatic(d)}\n\n`),
+                        A.map((d) => {
+                          return `export type ${d.name} = t.TypeOf<typeof ${d.name}>\n\n`
+                        }),
                       ),
                     ].join(''),
                 ),

@@ -45,7 +45,7 @@ export function handleStringProperty(
   return pipe(
     schema.enum,
     E.fromNullable(
-      O.some(gen.property(schemaName, gen.stringType, isRequired)),
+      O.some(gen.property(schemaName, gen.stringType, !isRequired)),
     ),
     E.chain((enums) =>
       pipe(
@@ -53,7 +53,7 @@ export function handleStringProperty(
         E.mapLeft(() => O.none as O.Option<gen.Property>),
         E.map((values) =>
           O.some(
-            gen.property(schemaName, gen.keyofCombinator(values), isRequired),
+            gen.property(schemaName, gen.keyofCombinator(values), !isRequired),
           ),
         ),
       ),
@@ -85,13 +85,23 @@ export function collectProperties(
   )
 }
 
+export function extractComponentIdentifier($ref: string): string {
+  const tokens = $ref.split('/')
+
+  return tokens[tokens.length - 1]
+}
+
 export function handlePropertyObject(
   schema: SchemaObject,
   schemaName: string,
   isRequired: boolean,
 ): O.Option<gen.Property> {
   if (isReferenceObject(schema)) {
-    return O.none
+    const componentName = extractComponentIdentifier(schema.$ref)
+    return pipe(
+      gen.property(schemaName, gen.identifier(componentName), !isRequired),
+      O.some,
+    )
   } else if (isArraySchemaObject(schema)) {
     return O.none
   } else if (isNonArraySchemaObject(schema)) {
@@ -105,20 +115,20 @@ export function handlePropertyObject(
             gen.property(
               schemaName,
               gen.typeCombinator(properties),
-              isRequired,
+              !isRequired,
             ),
           O.some,
         )
       case 'boolean':
-        return O.some(gen.property(schemaName, gen.booleanType, isRequired))
+        return O.some(gen.property(schemaName, gen.booleanType, !isRequired))
       case 'integer':
-        return O.some(gen.property(schemaName, gen.integerType, isRequired))
+        return O.some(gen.property(schemaName, gen.integerType, !isRequired))
       case 'null':
-        return O.some(gen.property(schemaName, gen.nullType, isRequired))
+        return O.some(gen.property(schemaName, gen.nullType, !isRequired))
       case 'number':
-        return O.some(gen.property(schemaName, gen.numberType, isRequired))
+        return O.some(gen.property(schemaName, gen.numberType, !isRequired))
       case 'string':
-        return handleStringProperty(schema, schemaName, isRequired)
+        return handleStringProperty(schema, schemaName, !isRequired)
     }
   }
 
@@ -174,7 +184,7 @@ export function handleRootSchema(
     return O.none
   } else if (isArraySchemaObject(schema)) {
     return O.none
-  } else {
+  } else if (isNonArraySchemaObject(schema)) {
     switch (schema.type) {
       case 'object':
         return handleObjectSchemaDeclaration(schema, schemaName)
@@ -190,6 +200,8 @@ export function handleRootSchema(
         return handleStringDeclaration(schema, schemaName)
     }
   }
+
+  return O.none as never
 }
 
 export function handleSchemas(
