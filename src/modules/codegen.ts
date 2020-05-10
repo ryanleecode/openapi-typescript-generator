@@ -143,12 +143,25 @@ export function handleArraySchemaObject(
   } else if (isArraySchemaObject(items)) {
     return gen.arrayCombinator(handleArraySchemaObject(items))
   } else {
-    return pipe(
-      items,
-      collectSchemaProperties,
-      gen.typeCombinator,
-      gen.arrayCombinator,
-    )
+    switch (items.type) {
+      case 'object':
+        return pipe(
+          items,
+          collectSchemaProperties,
+          gen.typeCombinator,
+          gen.arrayCombinator,
+        )
+      case 'boolean':
+        return gen.arrayCombinator(gen.booleanType)
+      case 'integer':
+        return gen.arrayCombinator(gen.integerType)
+      case 'null':
+        return gen.arrayCombinator(gen.nullType)
+      case 'number':
+        return gen.arrayCombinator(gen.numberType)
+      case 'string':
+        return gen.arrayCombinator(gen.stringType)
+    }
   }
 }
 
