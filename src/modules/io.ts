@@ -8,7 +8,6 @@ import { pipe } from 'fp-ts/lib/pipeable'
 import * as O from 'fp-ts/lib/Option'
 import * as gen from '@drdgvhbh/io-ts-codegen'
 import * as t from 'io-ts'
-import { sequenceT } from 'fp-ts/lib/Apply'
 
 export type SchemaObject =
   | OpenAPIV3.ReferenceObject
@@ -37,6 +36,25 @@ export const isReferenceObject = O.getRefinement<
 >((schema) =>
   '$ref' in schema ? O.some(schema as OpenAPIV3.ReferenceObject) : O.none,
 )
+
+export function mapNonArraySchemaObjectType(
+  type: OpenAPIV3.NonArraySchemaObjectType,
+): gen.BasicType {
+  switch (type) {
+    case 'object':
+      return gen.unknownRecordType
+    case 'boolean':
+      return gen.booleanType
+    case 'integer':
+      return gen.integerType
+    case 'null':
+      return gen.nullType
+    case 'number':
+      return gen.numberType
+    case 'string':
+      return gen.stringType
+  }
+}
 
 export function handleStringProperty(
   schema: OpenAPIV3.BaseSchemaObject,
@@ -151,16 +169,12 @@ export function handleArraySchemaObject(
           gen.typeCombinator,
           gen.arrayCombinator,
         )
-      case 'boolean':
-        return gen.arrayCombinator(gen.booleanType)
-      case 'integer':
-        return gen.arrayCombinator(gen.integerType)
-      case 'null':
-        return gen.arrayCombinator(gen.nullType)
-      case 'number':
-        return gen.arrayCombinator(gen.numberType)
-      case 'string':
-        return gen.arrayCombinator(gen.stringType)
+      default:
+        return pipe(
+          items.type,
+          mapNonArraySchemaObjectType,
+          gen.arrayCombinator,
+        )
     }
   }
 }
@@ -194,16 +208,15 @@ export function handlePropertyObject(
             ),
           O.some,
         )
-      case 'boolean':
-        return O.some(gen.property(schemaName, gen.booleanType, !isRequired))
-      case 'integer':
-        return O.some(gen.property(schemaName, gen.integerType, !isRequired))
-      case 'null':
-        return O.some(gen.property(schemaName, gen.nullType, !isRequired))
-      case 'number':
-        return O.some(gen.property(schemaName, gen.numberType, !isRequired))
       case 'string':
         return handleStringProperty(schema, schemaName, isRequired)
+      default:
+        return pipe(
+          schema.type,
+          mapNonArraySchemaObjectType,
+          (type) => gen.property(schemaName, type, !isRequired),
+          O.some,
+        )
     }
   } else {
     return O.none as never

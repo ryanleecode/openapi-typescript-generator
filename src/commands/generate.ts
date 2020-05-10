@@ -54,7 +54,7 @@ export default class Generate extends Command {
       TE.chainFirst((declarations) =>
         TE.tryCatch(
           () =>
-            pipe([path.join(flags.output, 'file.ts')], ([outputPath]) =>
+            pipe([path.join(flags.output, 'io.ts')], ([outputPath]) =>
               fs.writeAsync(
                 outputPath,
                 pipe(

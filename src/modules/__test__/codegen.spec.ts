@@ -1,5 +1,5 @@
 import { OpenAPIV3 } from 'openapi-types'
-import { handleRootSchema } from '../codegen'
+import { handleRootSchema } from '../io'
 import * as O from 'fp-ts/lib/Option'
 import { pipe } from 'fp-ts/lib/pipeable'
 import { TypeDeclaration } from '@drdgvhbh/io-ts-codegen'
