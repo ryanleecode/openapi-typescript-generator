@@ -30,7 +30,7 @@ export default class Generate extends Command {
     }),
   }
 
-  public async run(): Promise<any> {
+  public async run(): Promise<unknown> {
     const { flags } = this.parse(Generate)
 
     return pipe(

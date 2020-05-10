@@ -8,8 +8,6 @@ import { pipe } from 'fp-ts/lib/pipeable'
 import * as O from 'fp-ts/lib/Option'
 import * as gen from '@drdgvhbh/io-ts-codegen'
 import * as t from 'io-ts'
-import * as S from 'fp-ts/lib/Set'
-import { eq, eqString } from 'fp-ts/lib/Eq'
 
 export type SchemaObject =
   | OpenAPIV3.ReferenceObject
@@ -176,7 +174,7 @@ export function handleRootSchema(
     return O.none
   } else if (isArraySchemaObject(schema)) {
     return O.none
-  } else if (isNonArraySchemaObject(schema)) {
+  } else {
     switch (schema.type) {
       case 'object':
         return handleObjectSchemaDeclaration(schema, schemaName)
@@ -192,8 +190,6 @@ export function handleRootSchema(
         return handleStringDeclaration(schema, schemaName)
     }
   }
-
-  return O.none
 }
 
 export function handleSchemas(
