@@ -35,7 +35,7 @@ export default class Generate extends Command {
 
     return pipe(
       TE.tryCatch(
-        () => SwaggerParser.bundle(flags.input),
+        () => SwaggerParser.validate(flags.input),
         (err) => this.error((err as Error).message, { exit: 1 }),
       ),
       TE.map(
@@ -65,15 +65,15 @@ export default class Generate extends Command {
                     [
                       ...[
                         `/* eslint-disable */\n`,
-                        `import * as t from 'io-ts'\n`,
+                        `import * as t from 'io-ts'\n\n`,
                       ],
                       ...pipe(
                         sortedDeclarations,
-                        A.map((d) => `${gen.printRuntime(d)}\n`),
+                        A.map((d) => `${gen.printRuntime(d)}\n\n`),
                       ),
                       ...pipe(
                         sortedDeclarations,
-                        A.map((d) => `${gen.printStatic(d)}\n`),
+                        A.map((d) => `${gen.printStatic(d)}\n\n`),
                       ),
                     ].join(''),
                 ),

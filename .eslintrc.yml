@@ -33,10 +33,6 @@ rules:
   object-curly-spacing:
     - warn
     - always
-  "@typescript-eslint/explicit-function-return-type":
-    - off
-  "@typescript-eslint/camelcase":
-    - off
   "no-useless-escape":
     - off
   "@typescript-eslint/no-non-null-assertion":
