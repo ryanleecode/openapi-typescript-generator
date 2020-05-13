@@ -37,6 +37,10 @@ export const isReferenceObject = O.getRefinement<
   '$ref' in schema ? O.some(schema as OpenAPIV3.ReferenceObject) : O.none,
 )
 
+export function nameMapper(name: string): string {
+  return name.replace(/[^0-9a-zA-Z]/g, '')
+}
+
 export function mapNonArraySchemaObjectType(
   type: OpenAPIV3.NonArraySchemaObjectType,
 ): gen.BasicType {
@@ -117,7 +121,7 @@ export function collectObjectProperties(
 export function extractComponentIdentifier($ref: string): string {
   const tokens = $ref.split('/')
 
-  return tokens[tokens.length - 1]
+  return nameMapper(tokens[tokens.length - 1])
 }
 
 export function collectProperties(
@@ -235,18 +239,31 @@ export function handleObjectSchemaDeclaration(
       ),
     (properties) => {
       if (schema.allOf) {
+        if (schema.allOf.length === 1) {
+          return gen.intersectionCombinator([
+            ...[...collectObjectProperties(schema.allOf)].concat(
+              schema.properties ? properties : [],
+            ),
+            gen.typeCombinator([]),
+          ])
+        }
         return gen.intersectionCombinator(
           [...collectObjectProperties(schema.allOf)].concat(
             schema.properties ? properties : [],
           ),
         )
       } else if (schema.oneOf) {
-        return schema.properties
-          ? gen.intersectionCombinator([
-              properties,
-              gen.unionCombinator(collectObjectProperties(schema.oneOf)),
-            ])
-          : gen.unionCombinator(collectObjectProperties(schema.oneOf))
+        if (schema.properties) {
+          return gen.intersectionCombinator([
+            properties,
+            gen.unionCombinator(collectObjectProperties(schema.oneOf)),
+          ])
+        }
+
+        if (schema.oneOf.length === 1) {
+          return collectObjectProperties(schema.oneOf)[0]
+        }
+        return gen.unionCombinator(collectObjectProperties(schema.oneOf))
       } else {
         return properties
       }
@@ -308,11 +325,20 @@ export function handleRootSchema(
     }
   } else {
     if (schema.allOf) {
+      if (schema.allOf.length === 1) {
+        return pipe(
+          gen.typeDeclaration(
+            schemaName,
+            collectObjectProperties(schema.allOf)[0],
+          ),
+          O.some,
+        )
+      }
       return O.some(
         gen.typeDeclaration(
           schemaName,
           pipe(
-            collectObjectProperties(schema.allOf || []),
+            collectObjectProperties(schema.allOf),
             gen.intersectionCombinator,
           ),
         ),
@@ -321,10 +347,7 @@ export function handleRootSchema(
       return O.some(
         gen.typeDeclaration(
           schemaName,
-          pipe(
-            collectObjectProperties(schema.oneOf || []),
-            gen.unionCombinator,
-          ),
+          pipe(collectObjectProperties(schema.oneOf), gen.unionCombinator),
         ),
       )
     } else {
@@ -339,7 +362,7 @@ export function handleSchemas(
   return pipe(Object.keys(schemas), (schemaNames) =>
     A.array.traverse(I.identity)(schemaNames, (schemaName) =>
       pipe(schemas[schemaName], (schema) =>
-        handleRootSchema(schema, schemaName),
+        handleRootSchema(schema, nameMapper(schemaName)),
       ),
     ),
   )
